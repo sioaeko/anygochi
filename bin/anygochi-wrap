@@ -121,6 +121,54 @@ fi
 WRAPPER
 
     chmod +x "$wrapper"
+
+    # On Windows (MSYS/Git Bash), also generate a .cmd wrapper so that
+    # PowerShell and cmd.exe pick it up.
+    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+        local win_wrapper="$LOCAL_BIN/$tool.cmd"
+        local python_exe
+        python_exe="$(cygpath -w "$(command -v python 2>/dev/null || command -v python3 2>/dev/null)")" || true
+        local anygochi_win
+        anygochi_win="$(cygpath -w "$ANYGOCHI")" || true
+        local node_entry=""
+        # Try to find the tool's node entry point for the .cmd wrapper
+        local npm_root
+        npm_root="$(npm root -g 2>/dev/null)" || true
+        if [[ -n "$npm_root" ]]; then
+            # Attempt common npm entry patterns
+            local real_cmd="$LOCAL_BIN/../AppData/Roaming/npm/$tool.cmd"
+            [[ -f "$real_cmd" ]] || real_cmd="$(cygpath -u "$npm_root")/../$tool.cmd"
+            if [[ -f "$real_cmd" ]]; then
+                # Parse original .cmd to find node entry point
+                node_entry="$(grep -oP '(?<=node_modules\\\\)[^"]+' "$real_cmd" 2>/dev/null | head -1)" || true
+            fi
+        fi
+        # Determine the launch command for the real tool
+        local run_line
+        if [[ -n "$node_entry" ]]; then
+            local npm_root_win
+            npm_root_win="$(cygpath -w "$npm_root")" || true
+            run_line="node \"$npm_root_win\\$node_entry\" %*"
+        else
+            local real_bin_win
+            real_bin_win="$(cygpath -w "$real_bin")" || true
+            run_line="\"$real_bin_win\" %*"
+        fi
+
+        cat > "$win_wrapper" <<CMDWRAPPER
+@echo off
+chcp 65001 >nul 2>nul
+set PYTHONIOENCODING=utf-8
+if defined ANYGOCHI_WRAPPED goto :run
+set ANYGOCHI_WRAPPED=1
+"$python_exe" "$anygochi_win" session $tool --silent 2>nul
+powershell -NoProfile -Command "\$env:PYTHONIOENCODING='utf-8'; Start-Process -FilePath '\$env:USERPROFILE\\AppData\\Local\\Programs\\Python\\Python310\\python.exe' -ArgumentList '\$env:USERPROFILE\\.local\\bin\\anygochi','watch'"
+:run
+$run_line
+CMDWRAPPER
+        echo "  ✓ Created Windows wrapper: $win_wrapper"
+    fi
+
     echo "  ✓ Wrapped '$tool'"
     echo "    wrapper : $wrapper"
     echo "    real    : $real_bin"
@@ -136,6 +184,8 @@ do_remove() {
     head -3 "$wrapper" 2>/dev/null | grep -q "^# anygochi wrapper for:" \
         || die "'$wrapper' doesn't look like an anygochi wrapper"
     rm "$wrapper"
+    # Also remove .cmd wrapper on Windows
+    [[ -f "$wrapper.cmd" ]] && rm "$wrapper.cmd"
     echo "  ✓ Removed wrapper for '$tool'"
 }
 
@@ -146,13 +196,17 @@ do_list() {
     local found=0
     for f in "$LOCAL_BIN"/*; do
         [[ -f "$f" ]] || continue
+        # Skip .cmd files (listed alongside their bash counterpart)
+        [[ "$f" == *.cmd ]] && continue
         # Match only generated wrappers (have both marker lines)
         if head -3 "$f" 2>/dev/null | grep -q "^# anygochi wrapper for:"; then
             local tool
             tool="$(basename "$f")"
             local real
             real="$(grep "^# real binary:" "$f" | cut -d: -f2- | xargs)"
-            printf "    %-16s → %s\n" "$tool" "${real:-unknown}"
+            local suffix=""
+            [[ -f "$f.cmd" ]] && suffix=" (+.cmd)"
+            printf "    %-16s → %s%s\n" "$tool" "${real:-unknown}" "$suffix"
             found=1
         fi
     done

@@ -10,6 +10,7 @@ anygochi injects a cute ASCII companion into your CLI workflow. It supports sess
 - **Evolution System:** Egg -> Baby -> Adult -> Elder based on session counts.
 - **CLI Integration:** Built-in support for wrapping tools like `codex`, `gemini`, and `opencode`.
 - **Gemini CLI Buddy Panel:** A custom Ink component for Gemini CLI users.
+- **Cross-platform:** Works on Linux, macOS, and Windows (Git Bash).
 
 ## Components
 
@@ -20,20 +21,43 @@ anygochi injects a cute ASCII companion into your CLI workflow. It supports sess
 
 ## Installation
 
-1. Clone this repository.
-2. Link or copy the binaries to your path:
-   ```bash
-   ln -s $(pwd)/bin/anygochi ~/.local/bin/anygochi
-   ln -s $(pwd)/bin/anygochi-wrap ~/.local/bin/anygochi-wrap
-   ```
-3. Initialize your buddy:
-   ```bash
-   anygochi show
-   ```
-4. Wrap a tool:
-   ```bash
-   anygochi-wrap codex
-   ```
+### Linux / macOS
+
+```bash
+git clone https://github.com/sioaeko/anygochi.git
+cd anygochi
+ln -s $(pwd)/bin/anygochi ~/.local/bin/anygochi
+ln -s $(pwd)/bin/anygochi-wrap ~/.local/bin/anygochi-wrap
+cp share/* ~/.local/share/anygochi/
+```
+
+### Windows (Git Bash)
+
+```bash
+git clone https://github.com/sioaeko/anygochi.git
+cd anygochi
+mkdir -p ~/.local/bin ~/.local/share/anygochi
+cp bin/anygochi ~/.local/bin/
+cp bin/anygochi-wrap ~/.local/bin/
+cp share/* ~/.local/share/anygochi/
+```
+
+Make sure `~/.local/bin` is in your PATH (it should be before npm's path for wrappers to work).
+
+### Initialize
+
+```bash
+anygochi show
+```
+
+### Wrap a tool
+
+```bash
+anygochi-wrap codex
+anygochi-wrap gemini
+```
+
+On Windows, this also generates `.cmd` wrappers so that PowerShell and cmd.exe pick them up.
 
 ## Usage
 
@@ -43,20 +67,31 @@ anygochi session [tool]  # Increment session count
 anygochi watch           # Live refresh mode (e.g., for tmux panes)
 anygochi info            # Show brief buddy info
 anygochi list            # List all creature types
+anygochi reset           # Start over with a new egg
 ```
 
 ## Gemini CLI Integration
 
 To add anygochi to your Gemini CLI:
 ```bash
-cd share
-sudo bash gemini-patch.sh
+# Linux (global npm install)
+sudo bash share/gemini-patch.sh
+
+# Windows / user npm install
+bash share/gemini-patch.sh
 ```
 
-## Development Status
+The script auto-detects the Gemini CLI installation path. To revert:
+```bash
+bash share/gemini-unpatch.sh
+```
 
-- Currently debugging an issue where `opencode` session closes immediately in a 50-column pane.
-- Planned: Integration with `cursor` scripts.
+## Requirements
+
+- Python 3.8+
+- `rich` (optional, for colored output): `pip install rich`
+- `tmux` (optional, Linux/macOS, for split-pane buddy display)
+- Windows Terminal (optional, Windows, for split-pane buddy display)
 
 ## License
 

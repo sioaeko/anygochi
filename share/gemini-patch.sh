@@ -1,13 +1,41 @@
 #!/usr/bin/env bash
-# anygochi Gemini CLI patch — run with sudo
+# anygochi Gemini CLI patch
 # Adds BuddyPanel to Gemini CLI's Ink UI
+#
+# Linux:   sudo bash gemini-patch.sh
+# Windows: bash gemini-patch.sh  (no sudo needed)
 
 set -euo pipefail
 
-GEMINI_UI="/usr/lib/node_modules/@google/gemini-cli/dist/src/ui"
-PATCH_SRC="/home/shibuki/.local/share/anygochi"
+# Detect Gemini CLI UI directory
+if [[ -d "/usr/lib/node_modules/@google/gemini-cli/dist/src/ui" ]]; then
+    GEMINI_UI="/usr/lib/node_modules/@google/gemini-cli/dist/src/ui"
+elif command -v npm &>/dev/null; then
+    NPM_ROOT="$(npm root -g 2>/dev/null)" || true
+    if [[ -d "$NPM_ROOT/@google/gemini-cli/dist/src/ui" ]]; then
+        GEMINI_UI="$NPM_ROOT/@google/gemini-cli/dist/src/ui"
+    fi
+fi
+
+if [[ -z "${GEMINI_UI:-}" ]]; then
+    echo "  ✗ Could not find Gemini CLI installation."
+    echo "    Install it first: npm install -g @google/gemini-cli"
+    exit 1
+fi
+
+# Detect patch source directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/BuddyPanel.js" ]]; then
+    PATCH_SRC="$SCRIPT_DIR"
+elif [[ -f "$HOME/.local/share/anygochi/BuddyPanel.js" ]]; then
+    PATCH_SRC="$HOME/.local/share/anygochi"
+else
+    echo "  ✗ Could not find BuddyPanel.js"
+    exit 1
+fi
 
 echo "  Patching Gemini CLI with anygochi buddy panel..."
+echo "  Gemini UI: $GEMINI_UI"
 
 # Backup originals (skip if already backed up)
 if [[ ! -f "$GEMINI_UI/layouts/DefaultAppLayout.js.orig" ]]; then
@@ -27,4 +55,4 @@ echo "  ✓ Patched DefaultAppLayout.js"
 
 echo ""
 echo "  Done! Run 'gemini' to see your buddy."
-echo "  To revert: sudo bash /home/shibuki/.local/share/anygochi/gemini-unpatch.sh"
+echo "  To revert: bash $SCRIPT_DIR/gemini-unpatch.sh"

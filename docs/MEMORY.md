@@ -52,7 +52,11 @@ Gemini 업그레이드 시 `sudo bash gemini-patch.sh` 재실행 필요.
 
 - `anygochi-wrap --list`가 자기 자신을 표시하던 버그: heredoc 안에 마커 문자열이 있어 `grep`에 걸림 → `head -3` 로 해결
 - Ink의 `position: absolute` + `overflow: hidden` 클리핑 → ANSI stdout 직접 쓰기로 해결
-- `gemini-patch.sh`에서 `$HOME`이 sudo로 `/root`로 바뀌는 문제 → `/home/shibuki` 하드코딩으로 해결
+- `gemini-patch.sh`에서 `$HOME`이 sudo로 `/root`로 바뀌는 문제 → `npm root -g` 자동 감지로 해결
+- Windows cp949 인코딩에서 유니코드 심볼(✦ 등) 크래시 → `sys.stdout.reconfigure(encoding="utf-8")` 추가
+- Windows에서 bash 래퍼(확장자 없음)는 PowerShell/cmd에서 안 잡힘 → `.cmd` 래퍼 동시 생성으로 해결
+- Windows mintty에서 python PATH 누락으로 즉시 종료 → PowerShell `Start-Process`로 전환
+- Codex hooks는 Windows에서 아직 미지원 (바이너리가 자동 비활성화)
 
 **Why:** 이 메모는 다음 대화에서 opencode 문제를 계속 디버깅하거나 cursor 통합을 시작할 때 컨텍스트를 복원하기 위함.
 **How to apply:** opencode 이슈 재개 시 "50컬럼 패인에서 opencode 즉시 종료" 가설부터 확인. cursor 통합은 Task #6.

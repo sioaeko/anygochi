@@ -1,9 +1,25 @@
 #!/usr/bin/env bash
-# anygochi Gemini CLI unpatch — run with sudo
+# anygochi Gemini CLI unpatch
+#
+# Linux:   sudo bash gemini-unpatch.sh
+# Windows: bash gemini-unpatch.sh
 
 set -euo pipefail
 
-GEMINI_UI="/usr/lib/node_modules/@google/gemini-cli/dist/src/ui"
+# Detect Gemini CLI UI directory
+if [[ -d "/usr/lib/node_modules/@google/gemini-cli/dist/src/ui" ]]; then
+    GEMINI_UI="/usr/lib/node_modules/@google/gemini-cli/dist/src/ui"
+elif command -v npm &>/dev/null; then
+    NPM_ROOT="$(npm root -g 2>/dev/null)" || true
+    if [[ -d "$NPM_ROOT/@google/gemini-cli/dist/src/ui" ]]; then
+        GEMINI_UI="$NPM_ROOT/@google/gemini-cli/dist/src/ui"
+    fi
+fi
+
+if [[ -z "${GEMINI_UI:-}" ]]; then
+    echo "  ✗ Could not find Gemini CLI installation."
+    exit 1
+fi
 
 if [[ -f "$GEMINI_UI/layouts/DefaultAppLayout.js.orig" ]]; then
     cp "$GEMINI_UI/layouts/DefaultAppLayout.js.orig" \

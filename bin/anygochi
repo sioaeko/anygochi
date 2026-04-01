@@ -12,6 +12,13 @@ import random
 from datetime import datetime
 from pathlib import Path
 
+# Fix encoding on Windows (cp949/cp932 can't handle Unicode symbols)
+if sys.platform == "win32" and sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+IS_WINDOWS = sys.platform == "win32"
+
 try:
     from rich.console import Console
     from rich.panel import Panel
@@ -547,9 +554,16 @@ def cmd_show(state: dict):
     render(state, message=get_quote(state))
 
 def cmd_watch(state: dict):
+    def _clear():
+        if HAS_RICH:
+            Console().clear()
+        elif IS_WINDOWS:
+            os.system("cls")
+        else:
+            os.system("clear")
     try:
         while True:
-            Console().clear() if HAS_RICH else os.system("clear")
+            _clear()
             state = load_state()
             render(state, message=get_quote(state))
             time.sleep(6)
