@@ -1,0 +1,653 @@
+#!/usr/bin/env python3
+"""
+anygochi: A Tamagotchi-like companion for any CLI coding tool.
+State stored in ~/.config/anygochi/state.json
+"""
+
+import json
+import os
+import sys
+import time
+import random
+from datetime import datetime
+from pathlib import Path
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
+
+STATE_DIR  = Path.home() / ".config" / "anygochi"
+STATE_FILE = STATE_DIR / "state.json"
+
+# Legacy migration paths
+LEGACY_PATHS = [
+    Path.home() / ".codex" / "buddy.json",
+]
+
+# ── Creature definitions ──────────────────────────────────────────────────────
+
+CREATURES = {
+    "debugrix": {
+        "name": "Debugrix",
+        "title": "The Bug Hunter",
+        "rarity": "common",
+        "color": "bright_blue",
+        "stats": {"intelligence": 9, "speed": 5, "creativity": 6, "endurance": 7},
+        "description": "Born from a stack trace, Debugrix thrives\nin chaos. No bug can hide from it.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( ???? )",
+                      "   `~~~~'"],
+            "baby":  ["  (ó‿ò) ",
+                      "  /|_|\\ ",
+                      "   | |  "],
+            "adult": ["  (◉‿◉) ",
+                      " <|   |>",
+                      "  /| |\\ ",
+                      "   d b  "],
+            "elder": [" ╔(◉_◉)╗",
+                      " ║ BUG ║",
+                      " ╚══╦══╝",
+                      "    ╨   "],
+        },
+        "quotes": {
+            "idle": [
+                "...sniffing for bugs...",
+                "NULL? In THIS economy?",
+                "Off-by-one again, huh.",
+                "I can smell a segfault.",
+                "Your logs are... concerning.",
+            ],
+            "working": [
+                "Found it. Line 42. Obviously.",
+                "Stack unwinding intensifies",
+                "Core dumped. My work here is done.",
+                "The bug was in the chair all along.",
+            ],
+        },
+    },
+    "velocode": {
+        "name": "Velocode",
+        "title": "The Speed Demon",
+        "rarity": "common",
+        "color": "bright_yellow",
+        "stats": {"intelligence": 6, "speed": 10, "creativity": 7, "endurance": 5},
+        "description": "Velocode types before you even think.\nO(1) or nothing.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( ~~~~ )",
+                      "   `~~~~'"],
+            "baby":  [" ~(>‿<)~ ",
+                      "   /|\\  ",
+                      "   d b  "],
+            "adult": ["~~(>‿<)~~",
+                      "  ~/|\\~ ",
+                      " ~/ | \\~"],
+            "elder": ["≋≋(>‿<)≋≋",
+                      " ≋~/|\\~≋",
+                      "≋≋/ | \\≋≋"],
+        },
+        "quotes": {
+            "idle": [
+                "Waiting... ugh.",
+                "O(log n) is still too slow.",
+                "Blazing fast or go home.",
+                "Cache everything. EVERYTHING.",
+                "My context switch is 0ms.",
+            ],
+            "working": [
+                "Shipped before you blinked.",
+                "That's... fast even for me.",
+                "LGTM, merge it, ship it.",
+                "Profiled it. Your code is slow.",
+            ],
+        },
+    },
+    "refactoron": {
+        "name": "Refactoron",
+        "title": "The Perfectionist",
+        "rarity": "common",
+        "color": "bright_green",
+        "stats": {"intelligence": 8, "speed": 5, "creativity": 9, "endurance": 8},
+        "description": "This code could be cleaner.\nRefactoron won't rest until it is.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( ◇◇◇◇ )",
+                      "   `~~~~'"],
+            "baby":  ["  /\\_/\\ ",
+                      " ( o.o ) ",
+                      "  > ^ < "],
+            "adult": ["  /\\_/\\ ",
+                      " ( ●.● ) ",
+                      " (> ♦ <) ",
+                      "  ‾‾‾‾  "],
+            "elder": ["  ╱\\_/╲ ",
+                      " ╱ ●.● ╲",
+                      "(>CLEAN<)",
+                      " ╲_____╱"],
+        },
+        "quotes": {
+            "idle": [
+                "This function is too long.",
+                "Magic numbers? Seriously?",
+                "Have you heard of SRP?",
+                "That variable name is a crime.",
+                "Extract. That. Method.",
+            ],
+            "working": [
+                "Beautiful. Now extract that method.",
+                "I'd rename that variable...",
+                "SOLID principles satisfied.",
+                "90% coverage. Acceptable.",
+            ],
+        },
+    },
+    "nullbyte": {
+        "name": "Nullbyte",
+        "title": "The Void Walker",
+        "rarity": "rare",
+        "color": "bright_magenta",
+        "stats": {"intelligence": 7, "speed": 7, "creativity": 10, "endurance": 6},
+        "description": "From the null pointer exception,\nit emerged. No one knows why.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( ∅∅∅∅ )",
+                      "   `~~~~'"],
+            "baby":  ["  .~~~~.",
+                      " |? __ ?|",
+                      "  `~~~~'"],
+            "adult": ["  .──────.",
+                      " │ ∅    ∅ │",
+                      " │   ▽   │",
+                      "  `──────'"],
+            "elder": [" ╔════════╗",
+                      " ║ ∅    ∅ ║",
+                      " ║  NULL  ║",
+                      " ╚════════╝"],
+        },
+        "quotes": {
+            "idle": [
+                "...",
+                "void.",
+                "undefined behavior.",
+                "NaN.",
+                "*exists uncertainly*",
+            ],
+            "working": [
+                "It compiles. Don't ask why.",
+                "The answer is 0x00000000.",
+                "Segmentation fault (core dumped)",
+                "The types... don't matter.",
+            ],
+        },
+    },
+    "wizardex": {
+        "name": "Wizardex",
+        "title": "The Arcane Coder",
+        "rarity": "legendary",
+        "color": "bright_cyan",
+        "stats": {"intelligence": 10, "speed": 8, "creativity": 10, "endurance": 9},
+        "description": "Ancient. Wise. Writes one-liners that\ntake three meetings to understand.",
+        "ascii": {
+            "egg":   ["   *~~~~*",
+                      "  ( ✦✦✦✦ )",
+                      "   *~~~~*"],
+            "baby":  ["   *.*  ",
+                      "  (^_^) ",
+                      "  /|*|\\ "],
+            "adult": [" ✦(^‿^)✦",
+                      "✦/|~~~|\\✦",
+                      " ✦|   |✦ ",
+                      "  ✦✦✦✦✦ "],
+            "elder": ["✦✦(◕‿◕)✦✦",
+                      "✦/|MAGIC|\\✦",
+                      " ✦|     |✦",
+                      " ✦✦✦✦✦✦✦ "],
+        },
+        "quotes": {
+            "idle": [
+                "I wrote this in Brainfuck once.",
+                "Lambda > loop. Always.",
+                "Have you tried monadic composition?",
+                "Haskell would have prevented this.",
+                "The fold is mightier than the loop.",
+            ],
+            "working": [
+                "Behold! A perfectly balanced ternary.",
+                "One regex to rule them all.",
+                "The compiler bows before me.",
+                "Proof by contradiction. QED.",
+            ],
+        },
+    },
+    "compilox": {
+        "name": "Compilox",
+        "title": "The Patient One",
+        "rarity": "common",
+        "color": "yellow",
+        "stats": {"intelligence": 7, "speed": 3, "creativity": 6, "endurance": 10},
+        "description": "Compilox has seen many build failures.\nIt does not rush. It endures.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( .... )",
+                      "   `~~~~'"],
+            "baby":  ["  (u u) ",
+                      "  /| |\\ ",
+                      "   | |  "],
+            "adult": ["  (u_u) ",
+                      " /|   |\\ ",
+                      "  | | |  ",
+                      "  d   b  "],
+            "elder": [" ┌(u_u)┐",
+                      " │BUILD│",
+                      " │  OK │",
+                      " └─────┘"],
+        },
+        "quotes": {
+            "idle": [
+                "...compiling...",
+                "Patience. The linker is thinking.",
+                "56 warnings. Still fine.",
+                "It'll finish. Eventually.",
+                "Incremental build: 47 minutes.",
+            ],
+            "working": [
+                "Build succeeded. Finally.",
+                "Only 3 hours. A new record.",
+                "The wait was worth it.",
+                "Clean build. No shortcuts.",
+            ],
+        },
+    },
+}
+
+RARITY_WEIGHTS   = {"common": 65, "rare": 28, "legendary": 7}
+STAGES           = [(0, "egg"), (3, "baby"), (12, "adult"), (30, "elder")]
+EGG_HATCH_AT     = 3
+
+# ── State management ──────────────────────────────────────────────────────────
+
+def get_stage(sessions: int) -> str:
+    stage = "egg"
+    for threshold, name in STAGES:
+        if sessions >= threshold:
+            stage = name
+    return stage
+
+def get_next_stage_at(sessions: int) -> int | None:
+    for threshold, _ in STAGES:
+        if threshold > sessions:
+            return threshold
+    return None
+
+def pick_creature() -> str:
+    pool = []
+    for key, data in CREATURES.items():
+        pool.extend([key] * RARITY_WEIGHTS[data["rarity"]])
+    return random.choice(pool)
+
+def migrate_legacy() -> dict | None:
+    """Check for old codex-buddy state and migrate it."""
+    for legacy_path in LEGACY_PATHS:
+        if legacy_path.exists():
+            try:
+                with open(legacy_path) as f:
+                    old = json.load(f)
+                # Adapt old schema to new
+                state = {
+                    "creature":      old.get("creature", pick_creature()),
+                    "sessions":      old.get("sessions", 0),
+                    "tool_sessions": {"codex": old.get("sessions", 0)},
+                    "created_at":    old.get("created_at", datetime.now().isoformat()),
+                    "last_session":  old.get("last_session"),
+                    "hatched":       old.get("hatched", False),
+                }
+                save_state(state)
+                legacy_path.rename(legacy_path.with_suffix(".json.bak"))
+                return state
+            except Exception:
+                pass
+    return None
+
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        try:
+            with open(STATE_FILE) as f:
+                state = json.load(f)
+            # Ensure tool_sessions key exists (schema upgrade)
+            if "tool_sessions" not in state:
+                state["tool_sessions"] = {"legacy": state.get("sessions", 0)}
+                save_state(state)
+            return state
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    migrated = migrate_legacy()
+    if migrated:
+        return migrated
+
+    creature_key = pick_creature()
+    state = {
+        "creature":      creature_key,
+        "sessions":      0,
+        "tool_sessions": {},
+        "created_at":    datetime.now().isoformat(),
+        "last_session":  None,
+        "hatched":       False,
+    }
+    save_state(state)
+    return state
+
+def save_state(state: dict):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+# ── Rendering ─────────────────────────────────────────────────────────────────
+
+def stat_bar(value: int, width: int = 8) -> str:
+    filled = round((value / 10) * width)
+    return "█" * filled + "░" * (width - filled)
+
+def _tool_summary(state: dict) -> str:
+    ts = state.get("tool_sessions", {})
+    if not ts:
+        return ""
+    parts = [f"{t}:{n}" for t, n in sorted(ts.items(), key=lambda x: -x[1])[:3]]
+    return "  ".join(parts)
+
+def render_rich(state: dict, message: str = None):
+    console = Console()
+    sessions = state["sessions"]
+    stage    = get_stage(sessions)
+    is_egg   = not state.get("hatched", False)
+
+    if is_egg:
+        creature_key = state["creature"]
+        egg_art = CREATURES[creature_key]["ascii"]["egg"]
+        content = Text()
+        content.append("  ???\n",                style="bold dim white")
+        content.append("  The Unknown\n\n",       style="dim white")
+        content.append(f"  EGG  ",               style="bold white")
+        content.append(f"Sessions: {sessions}/{EGG_HATCH_AT}\n\n", style="dim white")
+        for line in egg_art:
+            content.append(f"  {line}\n",        style="bold white")
+        content.append("\n  Something stirs inside...\n", style="dim white")
+        left = EGG_HATCH_AT - sessions
+        content.append(f"\n  🥚 Hatches in {left} more session(s)\n", style="italic dim yellow")
+        if message:
+            content.append(f'\n  💬 "{message}"', style="italic white")
+        console.print(Panel(content,
+            title="[bold white]✦ ANYGOCHI ✦[/]",
+            border_style="white", width=38, padding=(0, 1)))
+        return
+
+    creature = CREATURES[state["creature"]]
+    color    = creature["color"]
+    ascii_art = creature["ascii"][stage]
+    stats    = creature["stats"]
+    rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
+    rarity_color  = rarity_colors[creature["rarity"]]
+    stage_icons   = {"egg": "🥚", "baby": "🐣", "adult": "✨", "elder": "👑"}
+    next_at  = get_next_stage_at(sessions)
+    tool_str = _tool_summary(state)
+
+    content = Text()
+    content.append(f"  {creature['name']}",      style=f"bold {color}")
+    content.append(f"  [{creature['rarity'].upper()}]\n", style=f"bold {rarity_color}")
+    content.append(f"  {creature['title']}\n\n", style=f"dim {color}")
+    content.append(f"  {stage_icons[stage]} {stage.upper()}", style="bold white")
+    content.append(f"  Sessions: {sessions}",    style="dim white")
+    if next_at:
+        content.append(f"  →{next_at}",          style="dim yellow")
+    content.append("\n")
+    if tool_str:
+        content.append(f"  🛠  {tool_str}\n",    style="dim white")
+    content.append("\n")
+    for line in ascii_art:
+        content.append(f"  {line}\n",            style=f"bold {color}")
+    content.append("\n")
+    content.append(f"  🧠  {stat_bar(stats['intelligence'])}  {stats['intelligence']}/10\n", style="bright_white")
+    content.append(f"  ⚡  {stat_bar(stats['speed'])}  {stats['speed']}/10\n",               style="bright_white")
+    content.append(f"  🎨  {stat_bar(stats['creativity'])}  {stats['creativity']}/10\n",      style="bright_white")
+    content.append(f"  💪  {stat_bar(stats['endurance'])}  {stats['endurance']}/10\n",        style="bright_white")
+    content.append(f"\n  {creature['description']}\n", style="dim white")
+    if message:
+        content.append(f'\n  💬 "{message}"',    style=f"italic {color}")
+
+    console.print(Panel(content,
+        title=f"[bold {color}]✦ ANYGOCHI ✦[/]",
+        border_style=color, width=38, padding=(0, 1)))
+
+def render_plain(state: dict, message: str = None):
+    sessions = state["sessions"]
+    stage    = get_stage(sessions)
+    is_egg   = not state.get("hatched", False)
+    print("=" * 38)
+    print("  ✦ ANYGOCHI ✦")
+    print("=" * 38)
+    if is_egg:
+        print(f"  Stage: EGG  ({sessions}/{EGG_HATCH_AT} sessions)")
+        print()
+        for line in CREATURES[state["creature"]]["ascii"]["egg"]:
+            print(f"  {line}")
+        print("\n  Something stirs inside...")
+    else:
+        creature = CREATURES[state["creature"]]
+        stats    = creature["stats"]
+        tool_str = _tool_summary(state)
+        print(f"  {creature['name']}  [{creature['rarity'].upper()}]")
+        print(f"  {creature['title']}")
+        print(f"  {stage.upper()}  Sessions: {sessions}")
+        if tool_str:
+            print(f"  Tools: {tool_str}")
+        print()
+        for line in creature["ascii"][stage]:
+            print(f"  {line}")
+        print()
+        print(f"  INT  {stat_bar(stats['intelligence'])}  {stats['intelligence']}/10")
+        print(f"  SPD  {stat_bar(stats['speed'])}  {stats['speed']}/10")
+        print(f"  CRE  {stat_bar(stats['creativity'])}  {stats['creativity']}/10")
+        print(f"  END  {stat_bar(stats['endurance'])}  {stats['endurance']}/10")
+    if message:
+        print(f'\n  💬 "{message}"')
+    print("=" * 38)
+
+def render(state: dict, message: str = None):
+    if HAS_RICH:
+        render_rich(state, message)
+    else:
+        render_plain(state, message)
+
+# ── Animations ────────────────────────────────────────────────────────────────
+
+def hatch_animation(state: dict):
+    creature = CREATURES[state["creature"]]
+    color    = creature["color"]
+    if HAS_RICH:
+        console = Console()
+        frames = [
+            ["   .~~~~.", "  ( ???? )", "   `~~~~'"],
+            ["   .~~~~.", "  ( *~~* )", "   `-||-'"],
+            ["  .*~~~~*.", "  (* oo *)", "   `~~~~'"],
+            ["  .╱~~~~╲.", "  ╱ !! !! ╲", "   `~~~~'"],
+        ]
+        for frame in frames:
+            console.clear()
+            console.print("\n  [bold yellow]✦ Your egg is hatching! ✦[/]\n")
+            for line in frame:
+                console.print(f"  [bold white]{line}[/]")
+            time.sleep(0.45)
+        console.clear()
+        console.print(f"\n  [bold {color}]✦ {creature['name']} has hatched! ✦[/]")
+        console.print(f"  [bold {color}][{creature['rarity'].upper()}] — {creature['title']}[/]\n")
+        for line in creature["ascii"]["baby"]:
+            console.print(f"  [bold {color}]{line}[/]")
+        console.print(f'\n  [italic {color}]"...hello."[/]\n')
+        console.print(f"  [dim]{creature['description']}[/]\n")
+        time.sleep(2.5)
+    else:
+        print("\n  ✦ Your egg is hatching! ✦\n")
+        time.sleep(1)
+        print(f"  ✦ {creature['name']} has hatched! ✦")
+        print(f"  [{creature['rarity'].upper()}] — {creature['title']}")
+        for line in creature["ascii"]["baby"]:
+            print(f"  {line}")
+        print('\n  "...hello."\n')
+        time.sleep(1.5)
+
+def evolve_animation(state: dict, new_stage: str):
+    creature = CREATURES[state["creature"]]
+    color    = creature["color"]
+    if HAS_RICH:
+        console = Console()
+        console.print(f"\n  [bold {color}]✦ {creature['name']} evolved to {new_stage.upper()}! ✦[/]\n")
+        for line in creature["ascii"][new_stage]:
+            console.print(f"  [bold {color}]{line}[/]")
+        print()
+        time.sleep(2)
+    else:
+        print(f"\n  ✦ {creature['name']} evolved to {new_stage.upper()}! ✦\n")
+        time.sleep(1.5)
+
+# ── Quotes ────────────────────────────────────────────────────────────────────
+
+def get_quote(state: dict, working: bool = False) -> str:
+    if get_stage(state["sessions"]) == "egg":
+        return random.choice(["*muffled tapping*", "...", "*tap tap*", "Soon..."])
+    creature = CREATURES[state["creature"]]
+    return random.choice(creature["quotes"]["working" if working else "idle"])
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
+    """Increment session. silent=True suppresses regular panel (animations still show)."""
+    old_stage = get_stage(state["sessions"])
+    state["sessions"] += 1
+    state["tool_sessions"][tool] = state["tool_sessions"].get(tool, 0) + 1
+    state["last_session"] = datetime.now().isoformat()
+    new_stage = get_stage(state["sessions"])
+    save_state(state)
+
+    if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+        state["hatched"] = True
+        save_state(state)
+        hatch_animation(state)
+    elif state.get("hatched") and old_stage != new_stage:
+        evolve_animation(state, new_stage)
+
+    if not silent:
+        render(state, message=get_quote(state, working=True))
+
+def cmd_show(state: dict):
+    render(state, message=get_quote(state))
+
+def cmd_watch(state: dict):
+    try:
+        while True:
+            Console().clear() if HAS_RICH else os.system("clear")
+            state = load_state()
+            render(state, message=get_quote(state))
+            time.sleep(6)
+    except KeyboardInterrupt:
+        pass
+
+def cmd_reset():
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+    msg = "anygochi reset. A new egg awaits..."
+    Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
+
+def cmd_info(state: dict):
+    stage  = get_stage(state["sessions"])
+    is_egg = not state.get("hatched", False)
+    ts     = state.get("tool_sessions", {})
+    if HAS_RICH:
+        c = Console()
+        if is_egg:
+            c.print(f"[bold white]Stage:[/] EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+        else:
+            creature = CREATURES[state["creature"]]
+            c.print(f"[bold]Name:[/]   {creature['name']}  [{creature['rarity'].upper()}]")
+            c.print(f"[bold]Stage:[/]  {stage}  (total: {state['sessions']} sessions)")
+            if ts:
+                c.print(f"[bold]Tools:[/]  {_tool_summary(state)}")
+    else:
+        if is_egg:
+            print(f"Stage: EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+        else:
+            creature = CREATURES[state["creature"]]
+            print(f"Name:  {creature['name']}  [{creature['rarity'].upper()}]")
+            print(f"Stage: {stage}  ({state['sessions']} sessions)")
+            if ts:
+                print(f"Tools: {_tool_summary(state)}")
+
+def cmd_list():
+    rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
+    if HAS_RICH:
+        c = Console()
+        c.print("\n[bold]Available Creatures:[/]\n")
+        for data in CREATURES.values():
+            rc = rarity_colors[data["rarity"]]
+            c.print(f"  [{rc}]{data['name']:12}[/]  [{rc}]{data['rarity'].upper():9}[/]  [dim]{data['title']}[/]")
+        c.print()
+    else:
+        print("\nAvailable Creatures:\n")
+        for data in CREATURES.values():
+            print(f"  {data['name']:12}  {data['rarity'].upper():9}  {data['title']}")
+        print()
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+USAGE = """\
+Usage: anygochi [command] [tool]
+
+Commands:
+  show            Show your buddy (default)
+  session [tool]  Increment session count, optionally tag tool name
+  watch           Live refresh mode (for tmux split pane)
+  reset           Delete current buddy and start a new egg
+  info            Show brief buddy info
+  list            List all creature types
+
+Examples:
+  anygochi
+  anygochi session codex
+  anygochi session aider
+  anygochi watch
+"""
+
+def main():
+    args = sys.argv[1:]
+    cmd  = args[0] if args else "show"
+
+    if cmd in ("-h", "--help", "help"):
+        print(USAGE)
+        return
+    if cmd == "reset":
+        cmd_reset()
+        return
+    if cmd == "list":
+        cmd_list()
+        return
+
+    state = load_state()
+
+    if cmd == "session":
+        tool    = args[1] if len(args) > 1 else "unknown"
+        silent  = "--silent" in args
+        cmd_session(state, tool, silent=silent)
+    elif cmd == "watch":
+        cmd_watch(state)
+    elif cmd == "info":
+        cmd_info(state)
+    else:
+        cmd_show(state)
+
+
+if __name__ == "__main__":
+    main()
