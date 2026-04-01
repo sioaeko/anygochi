@@ -1,4 +1,4 @@
-# anygochi
+# anybuddy
 
 Tamagotchi-style ASCII buddies for your CLI coding tools.
 
