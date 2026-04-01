@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-anygochi: A Tamagotchi-like companion for any CLI coding tool.
-State stored in ~/.config/anygochi/state.json
+openbuddy: A Tamagotchi-like companion for any CLI coding tool.
+State stored in ~/.config/openbuddy/state.json
 """
 
 import json
@@ -27,7 +27,7 @@ try:
 except ImportError:
     HAS_RICH = False
 
-STATE_DIR  = Path.home() / ".config" / "anygochi"
+STATE_DIR  = Path.home() / ".config" / "openbuddy"
 STATE_FILE = STATE_DIR / "state.json"
 
 # Legacy migration paths
@@ -389,7 +389,7 @@ def render_rich(state: dict, message: str = None):
         if message:
             content.append(f'\n  💬 "{message}"', style="italic white")
         console.print(Panel(content,
-            title="[bold white]✦ ANYGOCHI ✦[/]",
+            title="[bold white]✦ OPENBUDDY ✦[/]",
             border_style="white", width=38, padding=(0, 1)))
         return
 
@@ -427,7 +427,7 @@ def render_rich(state: dict, message: str = None):
         content.append(f'\n  💬 "{message}"',    style=f"italic {color}")
 
     console.print(Panel(content,
-        title=f"[bold {color}]✦ ANYGOCHI ✦[/]",
+        title=f"[bold {color}]✦ OPENBUDDY ✦[/]",
         border_style=color, width=38, padding=(0, 1)))
 
 def render_plain(state: dict, message: str = None):
@@ -435,7 +435,7 @@ def render_plain(state: dict, message: str = None):
     stage    = get_stage(sessions)
     is_egg   = not state.get("hatched", False)
     print("=" * 38)
-    print("  ✦ ANYGOCHI ✦")
+    print("  ✦ OPENBUDDY ✦")
     print("=" * 38)
     if is_egg:
         print(f"  Stage: EGG  ({sessions}/{EGG_HATCH_AT} sessions)")
@@ -573,7 +573,7 @@ def cmd_watch(state: dict):
 def cmd_reset():
     if STATE_FILE.exists():
         STATE_FILE.unlink()
-    msg = "anygochi reset. A new egg awaits..."
+    msg = "openbuddy reset. A new egg awaits..."
     Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
 
 def cmd_info(state: dict):
@@ -618,7 +618,7 @@ def cmd_list():
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 USAGE = """\
-Usage: anygochi [command] [tool]
+Usage: openbuddy [command] [tool]
 
 Commands:
   show            Show your buddy (default)
@@ -629,10 +629,10 @@ Commands:
   list            List all creature types
 
 Examples:
-  anygochi
-  anygochi session codex
-  anygochi session aider
-  anygochi watch
+  openbuddy
+  openbuddy session codex
+  openbuddy session aider
+  openbuddy watch
 """
 
 def main():

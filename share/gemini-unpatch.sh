@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# anygochi Gemini CLI unpatch
+# openbuddy Gemini CLI unpatch
 #
 # Linux:   sudo bash gemini-unpatch.sh
 # Windows: bash gemini-unpatch.sh

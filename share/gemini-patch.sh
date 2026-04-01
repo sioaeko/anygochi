@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# anygochi Gemini CLI patch
+# openbuddy Gemini CLI patch
 # Adds BuddyPanel to Gemini CLI's Ink UI
 #
 # Linux:   sudo bash gemini-patch.sh
@@ -27,14 +27,14 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/BuddyPanel.js" ]]; then
     PATCH_SRC="$SCRIPT_DIR"
-elif [[ -f "$HOME/.local/share/anygochi/BuddyPanel.js" ]]; then
-    PATCH_SRC="$HOME/.local/share/anygochi"
+elif [[ -f "$HOME/.local/share/openbuddy/BuddyPanel.js" ]]; then
+    PATCH_SRC="$HOME/.local/share/openbuddy"
 else
     echo "  ✗ Could not find BuddyPanel.js"
     exit 1
 fi
 
-echo "  Patching Gemini CLI with anygochi buddy panel..."
+echo "  Patching Gemini CLI with openbuddy buddy panel..."
 echo "  Gemini UI: $GEMINI_UI"
 
 # Backup originals (skip if already backed up)
