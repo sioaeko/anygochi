@@ -70,6 +70,15 @@ anygochi list            # List all creature types
 anygochi reset           # Start over with a new egg
 ```
 
+## Platform Differences
+
+| Platform | Buddy display | Gemini integration |
+|----------|--------------|-------------------|
+| Linux/macOS (tmux) | Split pane inside the same terminal | Ink component embedded in Gemini UI |
+| Windows | Separate popup window alongside the tool | Ink component embedded in Gemini UI |
+
+On Linux/macOS with tmux, the buddy appears as a split pane within your terminal. On Windows, tmux is not available, so the wrapper launches a **separate window** with the buddy watch panel next to your tool.
+
 ## Gemini CLI Integration
 
 To add anygochi to your Gemini CLI:
@@ -90,8 +99,9 @@ bash share/gemini-unpatch.sh
 
 - Python 3.8+
 - `rich` (optional, for colored output): `pip install rich`
-- `tmux` (optional, Linux/macOS, for split-pane buddy display)
-- Windows Terminal (optional, Windows, for split-pane buddy display)
+- `tmux` (optional, Linux/macOS, for split-pane buddy display within the same terminal)
+
+> **Windows note:** Since tmux is not available on Windows, the buddy opens in a separate popup window instead of a split pane. No additional dependencies are required — the wrapper uses PowerShell's `Start-Process` to launch the buddy window.
 
 ## License
 
