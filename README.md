@@ -16,14 +16,17 @@ openbuddy injects a cute ASCII companion into your CLI workflow. It supports ses
 - **Evolution System:** Egg -> Baby -> Adult -> Elder based on session counts.
 - **CLI Integration:** Built-in support for wrapping tools like `codex`, `gemini`, and `opencode`.
 - **Gemini CLI Buddy Panel:** A custom Ink component for Gemini CLI users.
+- **Robust Launcher:** Automated `stdin` flush and TTY stabilization to prevent input ghosting.
+- **Dynamic Layout:** Responsive buddy panel that scales or hides based on terminal width.
 - **Cross-platform:** Works on Linux, macOS, and Windows (Git Bash).
 
 ## Components
 
 - `bin/openbuddy`: Main Python application for managing your buddy.
 - `bin/openbuddy-wrap`: Tool to wrap other CLI commands with openbuddy.
+- `bin/openbuddy-launcher`: Robust execution wrapper with error capture and TTY stabilization.
 - `share/BuddyPanel.js`: Custom Ink component for Gemini CLI.
-- `share/gemini-patch.sh`: Script to patch Gemini CLI with the openbuddy buddy panel.
+- `share/openbuddy-patch.sh`: Script to patch Gemini CLI with the openbuddy buddy panel.
 
 ## Installation
 
@@ -90,15 +93,15 @@ On Linux/macOS with tmux, the buddy appears as a split pane within your terminal
 To add openbuddy to your Gemini CLI:
 ```bash
 # Linux (global npm install)
-sudo bash share/gemini-patch.sh
+sudo bash share/openbuddy-patch.sh
 
 # Windows / user npm install
-bash share/gemini-patch.sh
+bash share/openbuddy-patch.sh
 ```
 
 The script auto-detects the Gemini CLI installation path. To revert:
 ```bash
-bash share/gemini-unpatch.sh
+bash share/openbuddy-unpatch.sh
 ```
 
 ## Requirements

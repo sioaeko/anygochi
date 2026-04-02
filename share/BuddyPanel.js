@@ -50,10 +50,10 @@ const IDLE_QUOTES = {
 /** Returns the buddy panel's total width (including borders) for a given terminal width.
  *  0 = hidden. Used by both BuddyPanel and DefaultAppLayout. */
 function getBuddyWidth(terminalWidth) {
-    if (terminalWidth >= 130) return 20; // inner=18
-    if (terminalWidth >= 105) return 16; // inner=14
-    if (terminalWidth >=  85) return 13; // inner=11
-    if (terminalWidth >=  65) return 11; // inner=9, art only
+    if (terminalWidth >= 125) return 20; // inner=18
+    if (terminalWidth >= 100) return 16; // inner=14
+    if (terminalWidth >=  80) return 13; // inner=11
+    if (terminalWidth >=  60) return 11; // inner=9, art only
     return 0;
 }
 
@@ -158,16 +158,18 @@ export const BuddyPanel = ({ terminalWidth }) => {
         const panelW = getBuddyWidth(terminalWidth);
         if (panelW === 0) return;
 
-        // Start column (1-indexed for ANSI): right-align to terminal edge
-        const col  = terminalWidth - panelW + 1;
+        // Ensure we don't draw outside the terminal boundary
+        const col  = Math.max(1, terminalWidth - panelW + 1);
         const lines = buildLines(state, quote, panelW);
         if (!lines.length) return;
 
-        let buf = '\x1b7'; // save cursor (DEC)
+        let buf = '\x1b7'; // Save cursor position
+        // Only draw as many lines as would fit vertically, typically starting from top-right.
+        // We assume 1-based indexing for ANSI cursor rows.
         lines.forEach((line, i) => {
             buf += `\x1b[${i + 1};${col}H${line}`;
         });
-        buf += '\x1b8'; // restore cursor
+        buf += '\x1b8'; // Restore cursor position
         stdout.write(buf);
     }, [state, quote, terminalWidth, stdout]);
 

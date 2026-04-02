@@ -20,8 +20,8 @@ printf '\e[?1004l\e[?2004l' 2>/dev/null || true
 # 3. 지연 버디 실행 (배경)
 if [[ -n "${TMUX:-}" ]]; then
     (
-        # 도구가 완전히 로드될 때까지 충분히 대기 (3초)
-        sleep 3.0
+        # 도구가 로드되는 동안 잠시 대기 (0.5초면 충분할 듯)
+        sleep 0.5
         # 이미 분할되지 않은 경우에만 분할
         if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
             tmux split-window -h -b -d -l 31 "openbuddy watch" 2>/dev/null || true
@@ -34,11 +34,11 @@ fi
 # 4. 강력한 입력 버퍼 비우기
 _flush() {
     stty -echo 2>/dev/null || true
-    sleep 1.0
+    sleep 0.2
     # 파이썬으로 커널 레벨의 stdin 버퍼를 즉시 비움
     python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
     # 남은 찌꺼기 제거
-    while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true
+    while read -r -t 0.05 -n 10000 _trash; do :; done 2>/dev/null || true
     stty echo 2>/dev/null || true
 }
 _flush
