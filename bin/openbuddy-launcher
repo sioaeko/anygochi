@@ -1,46 +1,62 @@
 #!/usr/bin/env bash
-# openbuddy-launcher: Robust tool execution with delayed buddy split and error capture.
-
-set -euo pipefail
+# openbuddy-launcher: Ultra-robust execution with error capture and TTY stabilization.
 
 TOOL_NAME="$1"
 REAL_BIN="$2"
 shift 2
 
-# 1. TRAP ERRORS: If the tool crashes, don't let the pane disappear.
-handle_exit() {
-    local exit_code=$?
-    if [[ $exit_code -ne 0 ]]; then
-        echo -e "\n\033[1;31m[openbuddy] Tool '$TOOL_NAME' exited with code $exit_code.\033[0m"
-        read -rsp "[press enter to close this pane]"
-    fi
-}
-trap handle_exit EXIT
+# 1. LOGGING: Capture everything for debugging
+LOG_FILE="/tmp/openbuddy_${TOOL_NAME}.log"
+echo "--- Launching $TOOL_NAME at $(date) ---" > "$LOG_FILE"
 
-# 2. START DELAYED BUDDY (Background)
-# This waits for the tool to be fully loaded before changing the layout.
-# This prevents the focus/resize events that cause the auto-input bug.
+# 2. ENVIRONMENT: Force stable terminal settings
+export TERM=xterm-256color
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+# 3. DELAYED BUDDY (Background)
+# Increased delay to 3.5s to ensure tool is fully settled.
 if [[ -n "${TMUX:-}" ]]; then
     (
-        sleep 2.5
-        # Split window ONLY if it hasn't been split yet
+        sleep 3.5
+        # Only split if we are still in a single pane
         if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
             tmux split-window -h -b -d -l 31 "openbuddy watch" 2>/dev/null || true
         fi
     ) &
 fi
 
-# 3. AGGRESSIVE FLUSH (just in case)
-_flush_stdin() {
+# 4. ULTRA-AGGRESSIVE FLUSH
+# Disabling focus/paste modes and flushing kernel buffers
+_flush() {
     stty -echo 2>/dev/null || true
     printf '\e[?1004l\e[?2004l' 2>/dev/null || true
-    sleep 0.5
+    sleep 1.2
     python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
+    # Consume any lingering bytes
     while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true
     stty echo 2>/dev/null || true
 }
-_flush_stdin
 
-# 4. EXECUTE TOOL
-echo -e "\033[1;34m[openbuddy] Launching $TOOL_NAME...\033[0m"
-exec "$REAL_BIN" "$@"
+echo -e "\033[1;34m[openbuddy] Initializing $TOOL_NAME (cleaning terminal buffer...)\033[0m"
+_flush
+
+# 5. EXECUTION (No exec, so we can trap errors)
+# Run the tool and pipe errors to our log while keeping them on screen
+set +e
+"$REAL_BIN" "$@" 2> >(tee -a "$LOG_FILE" >&2)
+EXIT_CODE=$?
+set -e
+
+# 6. ERROR RECOVERY
+if [[ $EXIT_CODE -ne 0 ]]; then
+    echo -e "\n\033[1;31m[openbuddy] CRASH DETECTED!\033[0m"
+    echo -e "\033[1;31mTool '$TOOL_NAME' exited with code $EXIT_CODE.\033[0m"
+    echo -e "Check the log for details: \033[1;33mcat $LOG_FILE\033[0m"
+    echo -e "\n\033[1;37mLast 5 lines of error output:\033[0m"
+    tail -n 5 "$LOG_FILE"
+    echo -e "\n"
+    read -p "[press enter to close]" _unused
+fi
+
+exit $EXIT_CODE

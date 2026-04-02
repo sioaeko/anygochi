@@ -48,7 +48,7 @@ do_wrap() {
 
     if [[ -f "$wrapper" ]]; then
         if head -3 "$wrapper" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
-            echo "  '$tool' already wrapped."
+            echo "  Updating '$tool' wrapper..."
         else
             die "'$wrapper' exists and is not an openbuddy wrapper. Move it first."
         fi
@@ -73,19 +73,20 @@ if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
     "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
 
     if [[ -n "\${TMUX:-}" ]]; then
-        # Within tmux: Just run the launcher. It will handle the delayed split.
+        # Within tmux: Run the launcher. Delayed split is handled there.
         exec "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
 
     elif command -v tmux &>/dev/null; then
-        # Not in tmux: Start a new session.
+        # Not in tmux: Start a new session with explicit dimensions to avoid SIGWINCH
         _sess="openbuddy-\$\$"
-        # Create detached session with tool first.
-        tmux new-session -d -s "\$_sess" "\$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\")"
-        # Attach.
+        _cols="\$(tput cols 2>/dev/null || echo 120)"
+        _lines="\$(tput lines 2>/dev/null || echo 40)"
+        
+        tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\")"
         exec tmux attach-session -t "\$_sess"
 
     else
-        # No tmux: Fallback to direct execution.
+        # No tmux: Fallback
         "\$REAL_BIN" "\$@"
         _exit=\$?
         "\$OPENBUDDY_BIN" show 2>/dev/null || true
