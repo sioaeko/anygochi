@@ -82,7 +82,7 @@ if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
         _cols="\$(tput cols 2>/dev/null || echo 120)"
         _lines="\$(tput lines 2>/dev/null || echo 40)"
         
-        tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\")"
+        tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
         exec tmux attach-session -t "\$_sess"
 
     else
