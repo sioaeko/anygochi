@@ -64,6 +64,7 @@ openbuddy show
 ```bash
 openbuddy-wrap codex
 openbuddy-wrap gemini
+openbuddy-wrap opencode
 ```
 
 On Windows, this also generates `.cmd` wrappers so that PowerShell and cmd.exe pick them up.
