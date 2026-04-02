@@ -6,7 +6,15 @@ openbuddy injects a cute ASCII companion into your CLI workflow. It supports ses
 
 ## Screenshots
 
-| Gemini CLI (Ink panel embedded) | Codex CLI (separate buddy window) |
+### Linux / macOS (tmux split pane)
+
+| OpenCode (tmux split) | Codex CLI (tmux split) |
+|:---:|:---:|
+| ![OpenCode Linux](docs/images/linux-opencode.png) | ![Codex CLI Linux](docs/images/linux-codex.png) |
+
+### Windows (separate window)
+
+| Gemini CLI (Ink panel) | Codex CLI (separate window) |
 |:---:|:---:|
 | ![Gemini CLI](docs/images/win-gemini.png) | ![Codex CLI](docs/images/win-codex.png) |
 
