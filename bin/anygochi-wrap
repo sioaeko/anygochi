@@ -90,22 +90,20 @@ if [[ -x "\$ANYGOCHI_BIN" && -z "\${ANYGOCHI_WRAPPED:-}" ]]; then
     export ANYGOCHI_WRAPPED=1
 
     if [[ -n "\${TMUX:-}" ]]; then
-        # Already in tmux: split a buddy pane on the right if not yet open
-        if ! tmux list-panes -F "#{pane_current_command}" 2>/dev/null | grep -q "python3"; then
-            tmux split-window -h -l 30 -d "\$ANYGOCHI_BIN watch" 2>/dev/null || true
-        fi
-        "\$ANYGOCHI_BIN" session "$tool" --silent 2>/dev/null || true
         exec "\$REAL_BIN" "\$@"
 
     elif command -v tmux &>/dev/null; then
-        # Not in tmux: create a new session with buddy on the right, tool on the left
+        # Not in tmux: build layout in detached session first so tool starts with correct width
         "\$ANYGOCHI_BIN" session "$tool" --silent 2>/dev/null || true
         _sess="anygochi-\$\$"
-        exec tmux new-session -s "\$_sess" \
-            -x "\$(tput cols)" -y "\$(tput lines)" \
-            "ANYGOCHI_WRAPPED=1 \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$ANYGOCHI_BIN show; read -rsp '[press enter to close]'" \; \
-            split-window -h -l 30 -d "\$ANYGOCHI_BIN watch" \; \
-            select-pane -t 0
+        _cols="\$(tput cols 2>/dev/null || echo 80)"
+        _lines="\$(tput lines 2>/dev/null || echo 24)"
+        _main=\$(( _cols - 31 ))
+        [[ \$_main -lt 40 ]] && _main=\$_cols
+        tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$ANYGOCHI_BIN watch"
+        tmux split-window -h -b -l "\$_main" -t "\$_sess" \
+            "ANYGOCHI_WRAPPED=1 \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$ANYGOCHI_BIN show; read -rsp '[press enter to close]'"
+        exec tmux attach-session -t "\$_sess"
 
     else
         # No tmux: show session notification, run tool, show buddy after
