@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 # openbuddy-wrap: Create an openbuddy-enabled wrapper for any CLI coding tool.
-#
-# Usage:
-#   openbuddy-wrap <toolname>          # wrap a tool in PATH
-#   openbuddy-wrap <toolname> /path    # wrap a specific binary
-#   openbuddy-wrap --list              # list currently wrapped tools
-#   openbuddy-wrap --remove <toolname> # remove a wrapper
 
 set -euo pipefail
 
@@ -16,7 +10,6 @@ LAUNCHER="$LOCAL_BIN/openbuddy-launcher"
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 die()  { echo "error: $*" >&2; exit 1; }
-info() { echo "  $*"; }
 
 require_openbuddy() {
     [[ -x "$OPENBUDDY" ]] || die "openbuddy not found at $OPENBUDDY"
@@ -53,18 +46,13 @@ do_wrap() {
 
     local wrapper="$LOCAL_BIN/$tool"
 
-    [[ "$tool" == "openbuddy" || "$tool" == "openbuddy-wrap" || "$tool" == "openbuddy-launcher" ]] \
-        && die "cannot wrap openbuddy internals"
-
     if [[ -f "$wrapper" ]]; then
         if head -3 "$wrapper" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
-            echo "  '$tool' is already wrapped. Overwriting..."
+            echo "  '$tool' already wrapped."
         else
             die "'$wrapper' exists and is not an openbuddy wrapper. Move it first."
         fi
     fi
-
-    mkdir -p "$LOCAL_BIN"
 
     cat > "$wrapper" <<WRAPPER
 #!/usr/bin/env bash
@@ -81,29 +69,23 @@ REAL_BIN="$real_bin"
 if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
     export OPENBUDDY_WRAPPED=1
 
-    _cols="\$(tput cols 2>/dev/null || echo 80)"
-    _lines="\$(tput lines 2>/dev/null || echo 24)"
-    _main=\$(( _cols - 31 ))
-    [[ \$_main -lt 40 ]] && _main=\$_cols
+    # Simple session tracking
+    "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
 
     if [[ -n "\${TMUX:-}" ]]; then
-        "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
-        if [[ \$_main -lt \$_cols ]]; then
-            tmux split-window -h -b -d -l 31 "\$OPENBUDDY_BIN watch"
-        fi
+        # Within tmux: Just run the launcher. It will handle the delayed split.
         exec "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
 
     elif command -v tmux &>/dev/null; then
-        "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        # Not in tmux: Start a new session.
         _sess="openbuddy-\$\$"
-        tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$OPENBUDDY_BIN watch"
-        # We use a simple command string here to call the launcher
-        tmux split-window -h -b -l "\$_main" -t "\$_sess" \
-            "export OPENBUDDY_WRAPPED=1; \$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; read -rsp '[press enter to close]'"
+        # Create detached session with tool first.
+        tmux new-session -d -s "\$_sess" "\$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\")"
+        # Attach.
         exec tmux attach-session -t "\$_sess"
 
     else
-        "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        # No tmux: Fallback to direct execution.
         "\$REAL_BIN" "\$@"
         _exit=\$?
         "\$OPENBUDDY_BIN" show 2>/dev/null || true
@@ -115,79 +97,7 @@ fi
 WRAPPER
 
     chmod +x "$wrapper"
-
-    if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
-        local win_wrapper="$LOCAL_BIN/$tool.cmd"
-        local python_exe
-        python_exe="$(cygpath -w "$(command -v python 2>/dev/null || command -v python3 2>/dev/null)")" || true
-        local openbuddy_win
-        openbuddy_win="$(cygpath -w "$OPENBUDDY")" || true
-        local node_entry=""
-        local npm_root
-        npm_root="$(npm root -g 2>/dev/null)" || true
-        if [[ -n "$npm_root" ]]; then
-            local real_cmd="$LOCAL_BIN/../AppData/Roaming/npm/$tool.cmd"
-            [[ -f "$real_cmd" ]] || real_cmd="$(cygpath -u "$npm_root")/../$tool.cmd"
-            if [[ -f "$real_cmd" ]]; then
-                node_entry="$(grep -oP '(?<=node_modules\\\\)[^"]+' "$real_cmd" 2>/dev/null | head -1)" || true
-            fi
-        fi
-        local run_line
-        if [[ -n "$node_entry" ]]; then
-            local npm_root_win
-            npm_root_win="$(cygpath -w "$npm_root")" || true
-            run_line="node \"$npm_root_win\\$node_entry\" %*"
-        else
-            local real_bin_win
-            real_bin_win="$(cygpath -w "$real_bin")" || true
-            run_line="\"$real_bin_win\" %*"
-        fi
-
-        cat > "$win_wrapper" <<CMDWRAPPER
-@echo off
-chcp 65001 >nul 2>nul
-set PYTHONIOENCODING=utf-8
-if defined OPENBUDDY_WRAPPED goto :run
-set OPENBUDDY_WRAPPED=1
-"$python_exe" "$openbuddy_win" session $tool --silent 2>nul
-powershell -NoProfile -Command "\$env:PYTHONIOENCODING='utf-8'; Start-Process -FilePath '\$env:USERPROFILE\\AppData\\Local\\Programs\\Python\\Python310\\python.exe' -ArgumentList '\$env:USERPROFILE\\.local\\bin\\openbuddy','watch'"
-:run
-$run_line
-CMDWRAPPER
-        echo "  ✓ Created Windows wrapper: $win_wrapper"
-    fi
-
     echo "  ✓ Wrapped '$tool'"
-}
-
-do_remove() {
-    local tool="$1"
-    local wrapper="$LOCAL_BIN/$tool"
-    [[ -f "$wrapper" ]] || die "no wrapper found at $wrapper"
-    rm "$wrapper"
-    [[ -f "$wrapper.cmd" ]] && rm "$wrapper.cmd"
-    echo "  ✓ Removed wrapper for '$tool'"
-}
-
-do_list() {
-    echo ""
-    echo "  Wrapped tools in $LOCAL_BIN:"
-    echo ""
-    local found=0
-    for f in "$LOCAL_BIN"/*; do
-        [[ -f "$f" ]] || continue
-        [[ "$f" == *.cmd ]] && continue
-        if head -3 "$f" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
-            local tool
-            tool="$(basename "$f")"
-            local real
-            real="$(grep "^# real binary:" "$f" | cut -d: -f2- | xargs)"
-            printf "    %-16s → %s\n" "$tool" "${real:-unknown}"
-            found=1
-        fi
-    done
-    [[ $found -eq 0 ]] && echo "    (none yet)"
-    echo ""
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -199,10 +109,17 @@ case "${1:-}" in
         echo "       openbuddy-wrap --remove <toolname>"
         ;;
     "--list"|"list")
-        do_list ;;
+        echo "Wrapped tools in $LOCAL_BIN:"
+        for f in "$LOCAL_BIN"/*; do
+            if head -3 "$f" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
+                echo "  $(basename "$f")"
+            fi
+        done
+        ;;
     "--remove"|"remove")
-        [[ -n "${2:-}" ]] || die "specify a tool name to remove"
-        do_remove "$2" ;;
+        rm -f "$LOCAL_BIN/${2:-}"
+        echo "  ✓ Removed wrapper."
+        ;;
     *)
         do_wrap "$1" "${2:-}" ;;
 esac

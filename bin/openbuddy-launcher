@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# openbuddy-launcher: Executes a tool with TTY flushing and buddy integration.
+# openbuddy-launcher: Robust tool execution with delayed buddy split and error capture.
 
 set -euo pipefail
 
@@ -7,29 +7,40 @@ TOOL_NAME="$1"
 REAL_BIN="$2"
 shift 2
 
-# AGGRESSIVE TTY FLUSH
-# This is designed to kill the "auto-submitted empty input" bug.
+# 1. TRAP ERRORS: If the tool crashes, don't let the pane disappear.
+handle_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        echo -e "\n\033[1;31m[openbuddy] Tool '$TOOL_NAME' exited with code $exit_code.\033[0m"
+        read -rsp "[press enter to close this pane]"
+    fi
+}
+trap handle_exit EXIT
+
+# 2. START DELAYED BUDDY (Background)
+# This waits for the tool to be fully loaded before changing the layout.
+# This prevents the focus/resize events that cause the auto-input bug.
+if [[ -n "${TMUX:-}" ]]; then
+    (
+        sleep 2.5
+        # Split window ONLY if it hasn't been split yet
+        if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
+            tmux split-window -h -b -d -l 31 "openbuddy watch" 2>/dev/null || true
+        fi
+    ) &
+fi
+
+# 3. AGGRESSIVE FLUSH (just in case)
 _flush_stdin() {
-    # 1. Disable echo and terminal sequences
     stty -echo 2>/dev/null || true
     printf '\e[?1004l\e[?2004l' 2>/dev/null || true
-    
-    # 2. Wait for all startup/focus events to arrive (crucial for slow terminal emulators)
-    sleep 1.0
-    
-    # 3. Flush the kernel TTY buffer via Python (most reliable method)
+    sleep 0.5
     python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
-    
-    # 4. Drain any remaining bytes (final safety check)
     while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true
-    
-    # 5. Restore echo before execution
     stty echo 2>/dev/null || true
 }
-
-# Run flush
 _flush_stdin
 
-# Execute the real tool with its arguments
-# We use 'exec' to replace the launcher process
+# 4. EXECUTE TOOL
+echo -e "\033[1;34m[openbuddy] Launching $TOOL_NAME...\033[0m"
 exec "$REAL_BIN" "$@"
