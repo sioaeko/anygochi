@@ -11,8 +11,8 @@ import { join } from 'node:path';
 export { getBuddyWidth };
 
 const STATE_PATH = join(homedir(), '.config', 'openbuddy', 'state.json');
-const STAGES     = [[0, 'egg'], [3, 'baby'], [12, 'adult'], [30, 'elder']];
-const EGG_HATCH  = 3;
+const STAGES     = [[0, 'egg'], [10000000, 'baby'], [50000000, 'adult'], [100000000, 'elder']];
+const EGG_HATCH  = 10000000;
 
 // ── ANSI helpers ──────────────────────────────────────────────────────────────
 const C = {
@@ -59,9 +59,9 @@ function getBuddyWidth(terminalWidth) {
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
 
-function getStage(sessions) {
+function getStage(tokens) {
     let s = 'egg';
-    for (const [t, n] of STAGES) if (sessions >= t) s = n;
+    for (const [t, n] of STAGES) if (tokens >= t) s = n;
     return s;
 }
 function loadState() {
@@ -71,6 +71,12 @@ function loadState() {
 function pickQuote(key) {
     const q = IDLE_QUOTES[key] || ['...'];
     return q[Math.floor(Math.random() * q.length)];
+}
+
+function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return n.toString();
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -104,14 +110,14 @@ function buildLines(state, quote, panelWidth) {
     const show   = inner >= 9;
     if (!show) return [];
 
-    const sessions  = state?.sessions || 0;
+    const tokens    = state?.total_tokens || 0;
     const isEgg     = !state?.hatched;
     const key       = state?.creature || 'compilox';
     const color     = CREATURE_COLOR[key] || C.white;
-    const stage     = getStage(sessions);
+    const stage     = getStage(tokens);
     const art       = (CREATURE_ASCII[key] || CREATURE_ASCII.compilox)[stage] || [];
     const stageIcon = { egg: '🥚', baby: '🐣', adult: '✨', elder: '👑' }[stage];
-    const nextAt    = STAGES.find(([t]) => t > sessions)?.[0];
+    const nextAt    = STAGES.find(([t]) => t > tokens)?.[0];
     const showQuote = inner >= 11; // skip quote on very narrow panels
     const showMeta  = inner >= 11;
 
@@ -125,18 +131,18 @@ function buildLines(state, quote, panelWidth) {
 
     if (isEgg) {
         row(`${C.bold}???${C.reset}`, C.white);
-        if (showMeta) row(`EGG ${sessions}/${EGG_HATCH}`, C.gray);
+        if (showMeta) row(`EGG ${formatTokens(tokens)}/${formatTokens(EGG_HATCH)}`, C.gray);
         row('');
         for (const l of art) row(l, C.white + C.bold);
         if (showMeta) {
             row('');
-            row(`-${EGG_HATCH - sessions} session(s)`, C.yellow);
+            row(`-${formatTokens(EGG_HATCH - tokens)}`, C.yellow);
         }
         if (showQuote && quote) { row(''); row(`"${quote}"`, C.gray + C.dim); }
     } else {
         const name = CREATURE_NAME[key] || key;
         row(`${C.bold}${stageIcon}${name}${C.reset}`, color);
-        if (showMeta && nextAt) row(`s:${sessions}→${nextAt}`, C.gray);
+        if (showMeta && nextAt) row(`t:${formatTokens(tokens)}→${formatTokens(nextAt)}`, C.gray);
         row('');
         for (const l of art) row(l, color + C.bold);
         if (showQuote && quote) { row(''); row(`"${quote}"`, color + C.dim); }

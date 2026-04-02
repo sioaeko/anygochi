@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import random
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -274,21 +275,37 @@ CREATURES = {
 }
 
 RARITY_WEIGHTS   = {"common": 65, "rare": 28, "legendary": 7}
-STAGES           = [(0, "egg"), (3, "baby"), (12, "adult"), (30, "elder")]
-EGG_HATCH_AT     = 3
+# Updated to token-based stages: Egg(0), Baby(10M), Adult(50M), Elder(100M)
+STAGES           = [(0, "egg"), (10_000_000, "baby"), (50_000_000, "adult"), (100_000_000, "elder")]
+EGG_HATCH_AT     = 10_000_000
 
 # ── State management ──────────────────────────────────────────────────────────
 
-def get_stage(sessions: int) -> str:
+def get_tokscale_tokens() -> int:
+    """Fetch cumulative token usage from tokscale CLI."""
+    try:
+        # Use --json and --no-spinner for programmatic access
+        res = subprocess.run(
+            ["tokscale", "models", "--json", "--no-spinner"],
+            capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            return data.get("totalInput", 0) + data.get("totalOutput", 0)
+    except Exception:
+        pass
+    return 0
+
+def get_stage(tokens: int) -> str:
     stage = "egg"
     for threshold, name in STAGES:
-        if sessions >= threshold:
+        if tokens >= threshold:
             stage = name
     return stage
 
-def get_next_stage_at(sessions: int) -> int | None:
+def get_next_stage_at(tokens: int) -> int | None:
     for threshold, _ in STAGES:
-        if threshold > sessions:
+        if threshold > tokens:
             return threshold
     return None
 
@@ -309,6 +326,7 @@ def migrate_legacy() -> dict | None:
                 state = {
                     "creature":      old.get("creature", pick_creature()),
                     "sessions":      old.get("sessions", 0),
+                    "total_tokens":  old.get("total_tokens", 0),
                     "tool_sessions": old.get("tool_sessions", {"legacy": old.get("sessions", 0)}),
                     "created_at":    old.get("created_at", datetime.now().isoformat()),
                     "last_session":  old.get("last_session"),
@@ -327,9 +345,15 @@ def load_state() -> dict:
         try:
             with open(STATE_FILE) as f:
                 state = json.load(f)
-            # Ensure tool_sessions key exists (schema upgrade)
+            # Ensure tool_sessions and total_tokens keys exist (schema upgrade)
+            updated = False
             if "tool_sessions" not in state:
                 state["tool_sessions"] = {"legacy": state.get("sessions", 0)}
+                updated = True
+            if "total_tokens" not in state:
+                state["total_tokens"] = 0
+                updated = True
+            if updated:
                 save_state(state)
             return state
         except (json.JSONDecodeError, KeyError):
@@ -343,6 +367,7 @@ def load_state() -> dict:
     state = {
         "creature":      creature_key,
         "sessions":      0,
+        "total_tokens":  0,
         "tool_sessions": {},
         "created_at":    datetime.now().isoformat(),
         "last_session":  None,
@@ -362,6 +387,13 @@ def stat_bar(value: int, width: int = 8) -> str:
     filled = round((value / 10) * width)
     return "█" * filled + "░" * (width - filled)
 
+def format_tokens(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.1f}k"
+    return str(n)
+
 def _tool_summary(state: dict) -> str:
     ts = state.get("tool_sessions", {})
     if not ts:
@@ -371,8 +403,9 @@ def _tool_summary(state: dict) -> str:
 
 def render_rich(state: dict, message: str = None):
     console = Console()
+    tokens   = state.get("total_tokens", 0)
     sessions = state["sessions"]
-    stage    = get_stage(sessions)
+    stage    = get_stage(tokens)
     is_egg   = not state.get("hatched", False)
 
     if is_egg:
@@ -382,12 +415,11 @@ def render_rich(state: dict, message: str = None):
         content.append("  ???\n",                style="bold dim white")
         content.append("  The Unknown\n\n",       style="dim white")
         content.append(f"  EGG  ",               style="bold white")
-        content.append(f"Sessions: {sessions}/{EGG_HATCH_AT}\n\n", style="dim white")
+        content.append(f"Tokens: {format_tokens(tokens)}/{format_tokens(EGG_HATCH_AT)}\n\n", style="dim white")
         for line in egg_art:
             content.append(f"  {line}\n",        style="bold white")
-        content.append("\n  Something stirs inside...\n", style="dim white")
-        left = EGG_HATCH_AT - sessions
-        content.append(f"\n  🥚 Hatches in {left} more session(s)\n", style="italic dim yellow")
+        content.append("\n  Feeding on tokens...\n", style="dim white")
+        content.append(f"\n  🥚 Hatches at {format_tokens(EGG_HATCH_AT)} total tokens\n", style="italic dim yellow")
         if message:
             content.append(f'\n  💬 "{message}"', style="italic white")
         console.print(Panel(content,
@@ -402,7 +434,7 @@ def render_rich(state: dict, message: str = None):
     rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
     rarity_color  = rarity_colors[creature["rarity"]]
     stage_icons   = {"egg": "🥚", "baby": "🐣", "adult": "✨", "elder": "👑"}
-    next_at  = get_next_stage_at(sessions)
+    next_at  = get_next_stage_at(tokens)
     tool_str = _tool_summary(state)
 
     content = Text()
@@ -410,9 +442,9 @@ def render_rich(state: dict, message: str = None):
     content.append(f"  [{creature['rarity'].upper()}]\n", style=f"bold {rarity_color}")
     content.append(f"  {creature['title']}\n\n", style=f"dim {color}")
     content.append(f"  {stage_icons[stage]} {stage.upper()}", style="bold white")
-    content.append(f"  Sessions: {sessions}",    style="dim white")
+    content.append(f"  Tokens: {format_tokens(tokens)}", style="dim white")
     if next_at:
-        content.append(f"  →{next_at}",          style="dim yellow")
+        content.append(f"  →{format_tokens(next_at)}",   style="dim yellow")
     content.append("\n")
     if tool_str:
         content.append(f"  🛠  {tool_str}\n",    style="dim white")
@@ -433,25 +465,26 @@ def render_rich(state: dict, message: str = None):
         border_style=color, width=38, padding=(0, 1)))
 
 def render_plain(state: dict, message: str = None):
+    tokens   = state.get("total_tokens", 0)
     sessions = state["sessions"]
-    stage    = get_stage(sessions)
+    stage    = get_stage(tokens)
     is_egg   = not state.get("hatched", False)
     print("=" * 38)
     print("  ✦ OPENBUDDY ✦")
     print("=" * 38)
     if is_egg:
-        print(f"  Stage: EGG  ({sessions}/{EGG_HATCH_AT} sessions)")
+        print(f"  Stage: EGG  Tokens: {format_tokens(tokens)}/{format_tokens(EGG_HATCH_AT)}")
         print()
         for line in CREATURES[state["creature"]]["ascii"]["egg"]:
             print(f"  {line}")
-        print("\n  Something stirs inside...")
+        print("\n  Feeding on tokens...")
     else:
         creature = CREATURES[state["creature"]]
         stats    = creature["stats"]
         tool_str = _tool_summary(state)
         print(f"  {creature['name']}  [{creature['rarity'].upper()}]")
         print(f"  {creature['title']}")
-        print(f"  {stage.upper()}  Sessions: {sessions}")
+        print(f"  {stage.upper()}  Tokens: {format_tokens(tokens)}")
         if tool_str:
             print(f"  Tools: {tool_str}")
         print()
@@ -534,16 +567,22 @@ def get_quote(state: dict, working: bool = False) -> str:
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
-    """Increment session. silent=True suppresses regular panel and animations."""
-    old_stage = get_stage(state["sessions"])
+    """Increment session and refresh tokens from tokscale."""
+    old_stage = get_stage(state.get("total_tokens", 0))
     state["sessions"] += 1
     state["tool_sessions"][tool] = state["tool_sessions"].get(tool, 0) + 1
     state["last_session"] = datetime.now().isoformat()
-    new_stage = get_stage(state["sessions"])
+    
+    # Update tokens from tokscale
+    new_tokens = get_tokscale_tokens()
+    if new_tokens > 0:
+        state["total_tokens"] = new_tokens
+        
+    new_stage = get_stage(state.get("total_tokens", 0))
     save_state(state)
 
     if not silent:
-        if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+        if not state.get("hatched") and state.get("total_tokens", 0) >= EGG_HATCH_AT:
             state["hatched"] = True
             save_state(state)
             hatch_animation(state)
@@ -553,7 +592,7 @@ def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
         render(state, message=get_quote(state, working=True))
     else:
         # Silent mode: ensure hatched flag is updated even if animation is skipped
-        if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+        if not state.get("hatched") and state.get("total_tokens", 0) >= EGG_HATCH_AT:
             state["hatched"] = True
             save_state(state)
 
@@ -568,10 +607,23 @@ def cmd_watch(state: dict):
             os.system("cls")
         else:
             os.system("clear")
+    
+    last_update = 0
     try:
         while True:
             _clear()
+            # Reload state from file (which might have been updated by other sessions)
             state = load_state()
+            
+            # Periodically (every 2 mins) refresh tokscale tokens even in watch mode
+            now = time.time()
+            if now - last_update > 120:
+                new_tokens = get_tokscale_tokens()
+                if new_tokens > 0:
+                    state["total_tokens"] = new_tokens
+                    save_state(state)
+                last_update = now
+                
             render(state, message=get_quote(state))
             time.sleep(6)
     except KeyboardInterrupt:
@@ -584,26 +636,27 @@ def cmd_reset():
     Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
 
 def cmd_info(state: dict):
-    stage  = get_stage(state["sessions"])
+    tokens = state.get("total_tokens", 0)
+    stage  = get_stage(tokens)
     is_egg = not state.get("hatched", False)
     ts     = state.get("tool_sessions", {})
     if HAS_RICH:
         c = Console()
         if is_egg:
-            c.print(f"[bold white]Stage:[/] EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+            c.print(f"[bold white]Stage:[/] EGG  Tokens: {format_tokens(tokens)}/{format_tokens(EGG_HATCH_AT)}")
         else:
             creature = CREATURES[state["creature"]]
             c.print(f"[bold]Name:[/]   {creature['name']}  [{creature['rarity'].upper()}]")
-            c.print(f"[bold]Stage:[/]  {stage}  (total: {state['sessions']} sessions)")
+            c.print(f"[bold]Stage:[/]  {stage}  (total: {format_tokens(tokens)} tokens)")
             if ts:
                 c.print(f"[bold]Tools:[/]  {_tool_summary(state)}")
     else:
         if is_egg:
-            print(f"Stage: EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+            print(f"Stage: EGG  Tokens: {format_tokens(tokens)}/{format_tokens(EGG_HATCH_AT)}")
         else:
             creature = CREATURES[state["creature"]]
             print(f"Name:  {creature['name']}  [{creature['rarity'].upper()}]")
-            print(f"Stage: {stage}  ({state['sessions']} sessions)")
+            print(f"Stage: {stage}  ({format_tokens(tokens)} tokens)")
             if ts:
                 print(f"Tools: {_tool_summary(state)}")
 
