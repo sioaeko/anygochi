@@ -603,14 +603,59 @@ def save_state(state: dict):
 
 # ── Tokscale integration ─────────────────────────────────────────────────────
 
+def _nodejs_bin_dirs() -> list[str]:
+    """Extra directories to prepend to PATH so npx is visible (esp. Windows + IDE shells)."""
+    if not IS_WINDOWS:
+        return []
+    out: list[str] = []
+    for key in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(key)
+        if base:
+            d = os.path.join(base, "nodejs")
+            if os.path.isfile(os.path.join(d, "npx.cmd")) or os.path.isfile(os.path.join(d, "npx.exe")):
+                out.append(d)
+    local = os.environ.get("LOCALAPPDATA", "")
+    if local:
+        d = os.path.join(local, "Programs", "nodejs")
+        if os.path.isfile(os.path.join(d, "npx.cmd")) or os.path.isfile(os.path.join(d, "npx.exe")):
+            out.append(d)
+    return out
+
+
+def _tokscale_env() -> dict:
+    env = {**os.environ, "NODE_NO_WARNINGS": "1"}
+    extra = _nodejs_bin_dirs()
+    if extra:
+        prefix = os.pathsep.join(dict.fromkeys(extra))  # de-dupe, preserve order
+        env["PATH"] = prefix + os.pathsep + env.get("PATH", "")
+    return env
+
+
+def _resolve_npx() -> str | None:
+    """Absolute path to npx — required on Windows where CreateProcess won't find bare 'npx'."""
+    for name in ("npx", "npx.cmd", "npx.exe"):
+        w = shutil.which(name)
+        if w:
+            return w
+    for d in _nodejs_bin_dirs():
+        for leaf in ("npx.cmd", "npx.exe"):
+            p = os.path.join(d, leaf)
+            if os.path.isfile(p):
+                return p
+    return None
+
+
 def get_tokscale_data(*period_flags: str) -> dict | None:
     """Run tokscale --json. period_flags e.g. ('--today',) or () for all-time."""
-    cmd = ["npx", "-y", "tokscale@latest", "--json", "--no-spinner", *period_flags]
+    npx = _resolve_npx()
+    if not npx:
+        return None
+    cmd = [npx, "-y", "tokscale@latest", "--json", "--no-spinner", *period_flags]
     try:
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=120,
-            env={**os.environ, "NODE_NO_WARNINGS": "1"},
+            env=_tokscale_env(),
         )
         if result.returncode == 0 and result.stdout.strip():
             return json.loads(result.stdout.strip())
@@ -1186,7 +1231,16 @@ def cmd_tokens(state: dict, apply_sync: bool = False):
     data = get_tokscale_data("--today")
 
     if data is None:
-        msg = "tokscale failed (install Node, run: npx tokscale --help). npm i -g tokscale optional."
+        if not _resolve_npx():
+            msg = (
+                "npx not found — install Node.js or fix PATH (IDE/agent shells often omit Node). "
+                "Try the same command in a terminal where `npx tokscale --help` works."
+            )
+        else:
+            msg = (
+                "tokscale failed (non-zero exit, bad JSON, or empty stdout). "
+                "Check local data: npx tokscale@latest --json --no-spinner --today"
+            )
         if HAS_RICH:
             Console().print(f"[dim]{msg}[/]")
         else:
@@ -1250,7 +1304,14 @@ def cmd_tokens(state: dict, apply_sync: bool = False):
             Console().print("[bold]\U0001f504 Syncing all-time totals into buddy progress...[/]")
         all_d = get_tokscale_data()
         if all_d is None:
-            msg = "Could not fetch all-time tokscale JSON for sync."
+            msg = (
+                "Could not fetch all-time tokscale JSON. "
+                + (
+                    "npx not found (Node not on PATH)."
+                    if not _resolve_npx()
+                    else "Run: npx tokscale@latest --json --no-spinner"
+                )
+            )
             (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
             return
         life = parse_tokscale_report(all_d)
@@ -1273,7 +1334,14 @@ def cmd_sync(state: dict, quiet: bool = False):
     if all_d is None:
         if quiet:
             return
-        msg = "tokscale failed. Need Node/npx and local tokscale data."
+        msg = (
+            "tokscale sync failed. "
+            + (
+                "npx not found (Node not on PATH)."
+                if not _resolve_npx()
+                else "Try: npx tokscale@latest --json --no-spinner — check local session data."
+            )
+        )
         (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
         return
     life = parse_tokscale_report(all_d)
