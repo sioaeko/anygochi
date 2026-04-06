@@ -843,7 +843,7 @@ def _want_compact(term_width: Optional[int]) -> bool:
         return True
     if ev == "0":
         return False
-    return term_width is not None and term_width < 36
+    return term_width is not None and term_width < 48
 
 
 def _panel_width(term_width: Optional[int]) -> int:
@@ -948,7 +948,7 @@ def render_rich(state: dict, message: str = None, term_width: Optional[int] = No
 def render_rich_compact(state: dict, message: str = None, term_width: Optional[int] = None):
     """Minimal panel for narrow tmux splits (space-efficient)."""
     tw = term_width or 28
-    pw = max(18, min(32, tw - 1))
+    pw = max(16, min(28, tw - 1))
     console = Console(width=tw)
     sessions = state["sessions"]
     lt = int(state.get("lifetime_tokens", 0) or 0)
@@ -1054,7 +1054,7 @@ def render_plain(state: dict, message: str = None, term_width: Optional[int] = N
 
 def render_plain_compact(state: dict, message: str = None, term_width: Optional[int] = None):
     tw = term_width or 28
-    pw = max(18, min(32, tw - 1))
+    pw = max(16, min(28, tw - 1))
     sessions = state["sessions"]
     lt = int(state.get("lifetime_tokens", 0) or 0)
     prog = progress_points(state)
@@ -1746,7 +1746,7 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 16), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 36 cols).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 48 cols).
 
 Examples:
   openbuddy
