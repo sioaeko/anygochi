@@ -1776,6 +1776,14 @@ def format_codex_additional_context(state: dict) -> str:
     )
 
 
+def _codex_hook_system_message_line(ctx: str) -> str:
+    """One line for Codex SessionStart systemMessage (surfaced in UI per hooks docs)."""
+    line = (ctx.splitlines() or [""])[0].strip()
+    if len(line) > 240:
+        line = line[:237] + "..."
+    return line
+
+
 def cmd_codex_hook_session_start() -> None:
     """Codex SessionStart hook: JSON on stdout with additionalContext."""
     try:
@@ -1795,13 +1803,15 @@ def cmd_codex_hook_session_start() -> None:
                 run_animations=False,
             )
     ctx = format_codex_additional_context(state)
+    # additionalContext → model; systemMessage → UI (Codex often does not render multiline hook context visibly)
     print(
         json.dumps(
             {
+                "systemMessage": _codex_hook_system_message_line(ctx),
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
                     "additionalContext": ctx,
-                }
+                },
             },
             ensure_ascii=False,
         )
@@ -1833,18 +1843,20 @@ def cmd_codex_install_hook() -> None:
     ob = Path(__file__).resolve()
     py = sys.executable
     argv_cmd = [str(py), str(ob), "codex-hook-session-start"]
+    cmd_line = (
+        subprocess.list2cmdline(argv_cmd)
+        if IS_WINDOWS
+        else f"{shlex.quote(py)} {shlex.quote(str(ob))} codex-hook-session-start"
+    )
 
     # OpenAI docs shape: { "hooks": { "SessionStart": [ { "matcher", "hooks": [...] } ] } } }
+    # Matcher "*" = all SessionStart sources (runtime may add values beyond startup|resume).
     entry_official = {
-        "matcher": "startup|resume",
+        "matcher": "*",
         "hooks": [
             {
                 "type": "command",
-                "command": (
-                    subprocess.list2cmdline(argv_cmd)
-                    if IS_WINDOWS
-                    else f"{shlex.quote(py)} {shlex.quote(str(ob))} codex-hook-session-start"
-                ),
+                "command": cmd_line,
                 "statusMessage": "openbuddy",
             }
         ],
@@ -1872,7 +1884,11 @@ def cmd_codex_install_hook() -> None:
     if isinstance(hooks, list):
         for item in hooks:
             if _hook_cmd_has_openbuddy_marker(item):
-                print(f"Already configured (array hooks): {CODEX_HOOKS_FILE}")
+                if isinstance(item.get("handler"), dict):
+                    item["handler"]["command"] = argv_cmd
+                    item["handler"]["statusMessage"] = "openbuddy"
+                CODEX_HOOKS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                print(f"Updated openbuddy hook (array hooks): {CODEX_HOOKS_FILE}")
                 _codex_install_hook_footer()
                 return
         hooks.append(entry_array)
@@ -1886,7 +1902,11 @@ def cmd_codex_install_hook() -> None:
         for group in ss:
             for h in group.get("hooks", []):
                 if "codex-hook-session-start" in (h.get("command") or ""):
-                    print(f"Already configured: {CODEX_HOOKS_FILE}")
+                    group["matcher"] = "*"
+                    h["command"] = cmd_line
+                    h["statusMessage"] = "openbuddy"
+                    CODEX_HOOKS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                    print(f"Updated openbuddy SessionStart hook: {CODEX_HOOKS_FILE}")
                     _codex_install_hook_footer()
                     return
         ss.append(entry_official)
@@ -1911,8 +1931,8 @@ def _codex_install_hook_footer() -> None:
         )
     print("Note: Codex hooks may be disabled on Windows (OpenAI); WSL/macOS/Linux often work.")
     print(
-        "SessionStart only injects context; for +1 sessions without tmux use: "
-        "openbuddy codex-setup --write-wrapper"
+        "SessionStart: UI shows systemMessage; additionalContext is mainly for the model. "
+        "+1 sessions without tmux: openbuddy codex-setup --write-wrapper"
     )
 
 
