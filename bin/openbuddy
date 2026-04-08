@@ -1905,7 +1905,10 @@ def _codex_install_hook_footer() -> None:
     if cfg.is_file() and "codex_hooks" in cfg.read_text(encoding="utf-8", errors="replace"):
         print("config.toml: codex_hooks already present.")
     else:
-        print("\nAdd to ~/.codex/config.toml:\n[features]\ncodex_hooks = true\n")
+        print(
+            "\nAdd to ~/.codex/config.toml (put [features] after model=… so keys stay top-level):\n"
+            "[features]\ncodex_hooks = true\n"
+        )
     print("Note: Codex hooks may be disabled on Windows (OpenAI); WSL/macOS/Linux often work.")
     print(
         "SessionStart only injects context; for +1 sessions without tmux use: "
