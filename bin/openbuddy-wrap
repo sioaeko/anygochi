@@ -82,6 +82,8 @@ do_wrap() {
         # Check if it's one of ours
         if head -3 "$wrapper" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
             echo "  '$tool' is already wrapped. Overwriting..."
+        elif head -8 "$wrapper" 2>/dev/null | grep -qE 'codex-setup --write-wrapper|openbuddy: Codex hooks mode'; then
+            echo "  replacing minimal codex-setup shim with tmux wrapper..."
         else
             die "'$wrapper' exists and is not an openbuddy wrapper. Move it first."
         fi
